@@ -50,6 +50,31 @@ def save_to_json(data, filename='output.json'):
     except Exception as e:
         logger.error(f"Error saving JSON: {e}")
 
+def save_to_markdown(title, url, content, folder="output/markdown"):
+    """
+    Saves content as a Markdown file.
+    """
+    try:
+        ensure_dir(folder)
+        # Sanitize filename
+        safe_title = "".join([c for c in title if c.isalpha() or c.isdigit() or c==' ']).rstrip()
+        safe_title = safe_title.replace(' ', '_')[:50]
+        if not safe_title:
+             safe_title = "untitled"
+        
+        filename = f"{safe_title}.md"
+        filepath = os.path.join(folder, filename)
+        
+        md_content = f"# {title}\n\n**Source:** {url}\n\n---\n\n{content}"
+        
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(md_content)
+        
+        return filepath
+    except Exception as e:
+        logger.error(f"Error saving Markdown: {e}")
+        return None
+
 def ensure_dir(directory):
     """
     Ensures that a directory exists.

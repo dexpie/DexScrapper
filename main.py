@@ -1,6 +1,12 @@
 import asyncio
 import argparse
 import logging
+import sys
+
+# Windows asyncio fix
+if sys.platform.startswith("win"):
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
 from src.scraper import StaticScraper
 from src.dynamic_scraper import DynamicScraper
 from src.db_manager import DBManager

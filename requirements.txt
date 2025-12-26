@@ -8,3 +8,6 @@ playwright
 sqlalchemy
 streamlit
 openpyxl
+playwright-stealth
+aiofiles
+markdownify

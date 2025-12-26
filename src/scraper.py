@@ -4,18 +4,25 @@ import logging
 from bs4 import BeautifulSoup
 from fake_useragent import UserAgent
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from urllib.parse import urlparse, urljoin
+from .media_utils import download_file
+from .utils import save_to_markdown
+import markdownify
 
 logger = logging.getLogger(__name__)
 
 class StaticScraper:
-    def __init__(self, base_url, max_depth=1, concurrency=5, proxy=None):
+    def __init__(self, base_url, max_depth=1, concurrency=5, proxy=None, download_media=False, url_filter=None):
         self.base_url = base_url
         self.max_depth = max_depth
         self.concurrency = concurrency
         self.proxy = proxy
+        self.download_media = download_media
+        self.url_filter = url_filter.lower() if url_filter else None
         self.visited = set()
         self.ua = UserAgent()
         self.results = []
+        self.domain = urlparse(base_url).netloc
 
     def get_headers(self):
         return {
@@ -66,6 +73,13 @@ class StaticScraper:
         if depth > self.max_depth or url in self.visited:
             return
 
+        # Filtering Check
+        if self.url_filter and self.url_filter not in url.lower():
+            if url != self.base_url:
+                logger.info(f"Skipping {url} (Filtered)")
+                self.visited.add(url)
+                return
+
         self.visited.add(url)
         
         try:
@@ -73,18 +87,50 @@ class StaticScraper:
             if html:
                 data = self.parse(html, url)
                 if data:
+                    # Media Downloading
+                    media_files = []
+                    if self.download_media:
+                        soup = BeautifulSoup(html, 'html.parser')
+                        media_urls = []
+                        # Images
+                        for img in soup.find_all('img', src=True):
+                            src = urljoin(url, img['src'])
+                            media_urls.append(src)
+                        # PDFs
+                        for a in soup.find_all('a', href=True):
+                            if a['href'].lower().endswith('.pdf'):
+                                href = urljoin(url, a['href'])
+                                media_urls.append(href)
+                        
+                        for media_url in media_urls:
+                            saved_path = await download_file(session, media_url, "output/media")
+                            if saved_path:
+                                media_files.append(saved_path)
+                    
+                    data['media_files'] = media_files
+                    
+                    # Markdown Conversion
+                    md_text = markdownify.markdownify(html, heading_style="ATX")
+                    md_path = save_to_markdown(data['title'], url, md_text)
+                    data['markdown_file'] = md_path
+
                     self.results.append(data)
                     logger.info(f"Scraped {url}: {data['title']}")
 
                     if depth < self.max_depth:
                         tasks = []
-                        links_to_follow = data['links'][:5] 
+                        links_to_follow = data['links'] # Follow all valid links instead of limiting to 5, as concurrency limits execution
                         
                         for link in links_to_follow:
                              if link not in self.visited:
-                                 tasks.append(self.crawl(link, depth + 1, session))
+                                 # Basic domain check for crawl scope
+                                 if urlparse(link).netloc == self.domain:
+                                     tasks.append(self.crawl(link, depth + 1, session))
                         
                         if tasks:
+                            # Apply concurrency using semaphore if we were to refactor, 
+                            # but for now recursive gather is simple. 
+                            # Ideally we should use a queue like DynamicScraper but this is "Static (Fast)"
                             await asyncio.gather(*tasks)
 
         except Exception as e:

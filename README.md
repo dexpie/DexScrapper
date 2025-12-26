@@ -1,39 +1,38 @@
 # 🕷️ DexScrapper Ultimate - "Gacor" Edition
 
-A professional-grade, high-performance web scraper and crawler built with Python, Playwright, and Streamlit.
+A professional-grade, high-performance web scraper and crawler built with Python, Playwright, and Streamlit. Now compatible with "Human-like" Stealth browsing!
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.9+-blue.svg)
 
 ## 🌟 Key Features
 
-- **🚀 Dual Mode**: 
-  - **Static**: Extremely fast async scraping using `aiohttp` for standard websites.
-  - **Dynamic**: Full JavaScript support using `Playwright` for SPAs (React, Vue, etc.).
-- **📊 Web Dashboard**: Beautiful UI built with Streamlit to manage scraping and view data.
-- **💾 Robust Storage**: Auto-saves to **SQLite** database and supports **CSV/Excel/JSON** exports.
-- **🔄 Stealth System**: Anti-detect mechanics with randomized User-Agents and proxy support.
-- **🐳 Docker Ready**: Plug-and-play deployment with Docker Compose.
+- **🚀 Dual Mode Engine**: 
+  - **Static**: Async `aiohttp` for speed.
+  - **Dynamic**: `Playwright` for full JavaScript support (SPA).
+- **🥷 OP Stealth Mode**: Anti-detect features to bypass WAF/Bot protection.
+- **📸 Media Hunter**: Auto-download Images & PDFs.
+- **📝 Smart Markdown**: Auto-convert HTML to clean Markdown files.
+- **📦 Batch Processing**: Scrape hundreds of URLs from a list.
+- **📊 Web Dashboard**: Beautiful UI to control everything visually.
+- **💾 Robust Storage**: SQLite + CSV/Excel/JSON Exports.
+- ** Docker Ready**: Plug-and-play deployment.
 
 ## 🛠️ Installation
 
-### Local Setup
-
-1.  **Clone & Install Dependencies**:
+### Quick Start (Windows)
+1.  **Install Dependencies**:
     ```bash
-    git clone https://github.com/dexscrapper/dexscrapper.git
-    cd dexscrapper
     pip install -r requirements.txt
-    ```
-
-2.  **Install Browsers (for Dynamic Mode)**:
-    ```bash
     playwright install
+    ```
+2.  **Run Dashboard**:
+    Double-click **`run.bat`** or types:
+    ```powershell
+    .\run.bat
     ```
 
 ### Docker Setup
-
-Simply run:
 ```bash
 docker-compose up --build
 ```
@@ -41,48 +40,37 @@ Access the dashboard at `http://localhost:8501`.
 
 ## 📖 Usage Guide
 
-### 1. Web Dashboard (Recommended)
-The easiest way to use DexScrapper.
+### Web Dashboard
+The dashboard allows you to:
+- Switch between Static/Dynamic modes.
+- Adjust **Concurrency** (Speed) and **Crawl Depth**.
+- Enable **Visual Mode** (See the browser working).
+- Upload Batch Files (`.txt`) for mass scraping.
+- Filter URLs by keywords.
+
+### Command Line Interface (CLI)
 ```bash
-streamlit run dashboard.py
+# Basic Recursive Crawl
+python main.py --url "https://example.com" --depth 2
+
+# "OP" Dynamic Mode with Media Download
+python main.py --url "https://spa-example.com" --dynamic --download-media
+
+# Batch Scraper from File (using Helper script logic or pure python loop)
+# (Currently CLI is single URL, use Dashboard for native Batch UI)
 ```
-Open your browser at the URL provided (usually `http://localhost:8501`).
-
-### 2. Command Line Interface (CLI)
-
-**Basic Static Crawl (Depth 2)**
-```bash
-python main.py --url "https://example.com" --depth 2 --db results.db
-```
-
-**Dynamic Scraping (JS-Heavy Sites)**
-```bash
-python main.py --url "https://spa-example.com" --dynamic --output results.xlsx
-```
-
-**Using Proxy**
-```bash
-python main.py --url "https://target.com" --proxy "http://user:pass@host:port"
-```
-
-### CLI Arguments
-| Flag | Description | Default |
-|------|-------------|---------|
-| `--url` | Target URL (Required) | - |
-| `--dynamic` | Enable Playwright for JS sites | False |
-| `--depth` | Crawling depth (Static mode only) | 1 |
-| `--db` | SQLite database filename | None |
-| `--output` | Export filename (.csv, .json, .xlsx) | `output/latest_run.csv` |
-| `--proxy` | Proxy URL string | None |
 
 ## 📂 Project Structure
 
 - `src/scraper.py`: Static async scraper engine.
 - `src/dynamic_scraper.py`: Dynamic Playwright scraper engine.
-- `src/db_manager.py`: Database handling (SQLAlchemy).
+- `src/media_utils.py`: Media download logic.
+- `src/log_utils.py`: Log streaming.
 - `dashboard.py`: Streamlit UI application.
 - `main.py`: CLI entry point.
-- `output/`: Generated export files.
+- `output/`: 
+    - `media/`: Downloaded images/PDFs.
+    - `markdown/`: Cleaned text content.
 
 ## 🤝 Contributing
 Pull requests are welcome!
