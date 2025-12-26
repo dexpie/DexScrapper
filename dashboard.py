@@ -7,8 +7,10 @@ if sys.platform.startswith("win"):
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 import streamlit as st
-import pandas as pd
+import asyncio
+import sys
 import os
+import pandas as pd
 import queue
 import logging
 from src.scraper import StaticScraper
@@ -17,33 +19,29 @@ from src.db_manager import DBManager
 from src.ai_utils import parse_with_ai
 from src.utils import save_to_csv, save_to_excel, save_to_json, ensure_dir
 from src.log_utils import QueueHandler
-
-# Setup Page
-st.set_page_config(page_title="DexScrapper Ultimate V2", page_icon="🕷️", layout="wide")
+from src.session_manager import create_session, get_available_sessions
+from src.cerebro import CerebroAgent
 
 # Windows Asyncio Policy Fix
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
-st.set_page_config(page_title="DexScrapper Enterprise", page_icon="🕷️", layout="wide")
+st.set_page_config(page_title="DexScrapper God Mode", page_icon="⚡", layout="wide")
 
-st.title("🕷️ DexScrapper Enterprise")
+st.title("⚡ DexScrapper God Mode")
 
-# Setup Logging (moved here to be global for all tabs)
+# Setup Logging (global)
 if 'log_queue' not in st.session_state:
     st.session_state['log_queue'] = queue.Queue()
-    
-    # Configure root logger to send to queue
     q_handler = QueueHandler(st.session_state['log_queue'])
-    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    q_handler.setFormatter(formatter)
-    
     # Add handler to scrapers loggers
     logging.getLogger().addHandler(q_handler)
     logging.getLogger().setLevel(logging.INFO)
 
 # Tabs
-tab_scraper, tab_explorer, tab_scheduler = st.tabs(["🚀 Scraper Engine", "📊 Data Explorer", "👁️ The Watcher"])
+tab_scraper, tab_explorer, tab_scheduler, tab_session, tab_cerebro = st.tabs([
+    "🚀 Scraper Engine", "📊 Data Explorer", "👁️ The Watcher", "🔐 Session Manager", "🧠 Cerebro Agent"
+])
 
 # --- TAB 1: SCRAPER ENGINE ---
 with tab_scraper:
@@ -69,6 +67,15 @@ with tab_scraper:
             urls_to_scrape = urls
 
     mode = st.sidebar.radio("Scraping Mode", ["Static (Fast)", "Dynamic (JS Support)"])
+
+    # Session Selection (Auth)
+    available_sessions = get_available_sessions()
+    session_file = None
+    if available_sessions and "Dynamic" in mode:
+        st.sidebar.subheader("🔐 Auth Session")
+        selected_session = st.sidebar.selectbox("Use Session", ["None"] + available_sessions)
+        if selected_session != "None":
+            session_file = os.path.join("sessions", f"{selected_session}.json")
 
     # Advanced Options
     st.sidebar.subheader("⚙️ Advanced Settings")
@@ -139,7 +146,8 @@ with tab_scraper:
                                                headless=not visual_mode, 
                                                proxy=proxy_url if enable_proxy else None,
                                                download_media=download_media,
-                                               url_filter=url_filter)
+                                               url_filter=url_filter,
+                                               session_file=session_file) # Pass session
                         current_results = asyncio.run(scraper.run())
                     
                     # AI Processing
@@ -292,6 +300,55 @@ with tab_scheduler:
         with open("scheduled_jobs.json", 'r') as f:
              jobs = json.load(f)
         st.json(jobs)
+
+# --- TAB 4: SESSION MANAGER ---
+with tab_session:
+    st.header("🔐 Session Manager (Auth)")
+    st.markdown("Create a session to scrape websites that require login (Facebook, LinkedIn, etc).")
+    
+    session_name = st.text_input("New Session Name (e.g. facebook_acc1)")
+    login_url = st.text_input("Login URL", "https://facebook.com")
+    
+    if st.button("🚀 Launch Login Browser"):
+        if not session_name:
+            st.error("Please enter a session name.")
+        else:
+            with st.spinner("Launching browser... Login manually and close the window to save."):
+                asyncio.run(create_session(session_name, login_url))
+            st.success(f"Session '{session_name}' saved! You can now select it in the Scraper tab.")
+            st.rerun()
+            
+    st.subheader("📂 Saved Sessions")
+    sessions = get_available_sessions()
+    if sessions:
+        st.write(sessions)
+    else:
+        st.info("No sessions saved yet.")
+
+# --- TAB 5: CEREBRO AGENT ---
+with tab_cerebro:
+    st.header("🧠 Cerebro - Autonomous Research Agent")
+    st.info("Ask a question. Cerebro will search the web, scrape top results, and write a report.")
+    
+    cerebro_key = st.text_input("OpenAI API Key (Required for Cerebro)", type="password")
+    query = st.text_input("Research Topic / Question", "What are the latest breakthroughs in AI Agents?")
+    
+    if st.button("🔎 Start Research"):
+        if not cerebro_key:
+            st.error("Please provide OpenAI API Key.")
+        else:
+            agent = CerebroAgent(cerebro_key)
+            status_container = st.empty()
+            report_area = st.container()
+            
+            def update_status(msg):
+                status_container.info(msg)
+                
+            with st.spinner("Cerebro is working..."):
+                report = asyncio.run(agent.research_topic(query, update_status))
+            
+            status_container.success("Research Complete!")
+            st.markdown(report)
 
 # Display Results
 if 'results' in st.session_state and st.session_state['results']:

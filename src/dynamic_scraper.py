@@ -11,20 +11,22 @@ import markdownify
 logger = logging.getLogger(__name__)
 
 class DynamicScraper:
-    def __init__(self, base_url, max_depth=1, concurrency=3, headless=True, proxy=None, download_media=False, url_filter=None):
-        self.base_url = base_url
+    def __init__(self, url, max_depth=2, concurrency=3, headless=True, proxy=None, download_media=False, url_filter=None, session_file=None):
+        self.start_url = url
         self.max_depth = max_depth
         self.concurrency = concurrency
         self.headless = headless
-        self.proxy = {'server': proxy} if proxy else None
+        self.proxy = proxy
         self.download_media = download_media
-        self.url_filter = url_filter.lower() if url_filter else None
+        self.url_filter = url_filter
+        self.session_file = session_file
         self.ua = UserAgent()
         
         # State
         self.visited = set()
         self.results = []
-        self.domain = urlparse(base_url).netloc
+        self.semaphore = asyncio.Semaphore(concurrency)
+        self.domain = urlparse(url).netloc
 
     def is_same_domain(self, url):
         return urlparse(url).netloc == self.domain
@@ -142,19 +144,39 @@ class DynamicScraper:
             queue.task_done()
 
     async def run(self):
-        logger.info(f"Starting Dynamic Crawl for {self.base_url} (Depth: {self.max_depth}, Proxy: {self.proxy})")
+        logger.info(f"Starting Dynamic Crawl for {self.start_url} (Depth: {self.max_depth}, Proxy: {self.proxy})") # Changed self.base_url to self.start_url
         
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=self.headless, proxy=self.proxy)
-            context = await browser.new_context(
-                user_agent=self.ua.random,
-                viewport={'width': 1920, 'height': 1080}
-            )
+            browser_args = {}
+            if self.proxy:
+                 parsed = urlparse(self.proxy)
+                 browser_args['proxy'] = {
+                     'server': f"{parsed.scheme}://{parsed.hostname}:{parsed.port}",
+                 }
+                 if parsed.username and parsed.password:
+                     browser_args['proxy']['username'] = parsed.username
+                     browser_args['proxy']['password'] = parsed.password
+
+            browser = await p.chromium.launch(headless=self.headless, args=["--disable-blink-features=AutomationControlled"], **browser_args) # Added **browser_args here
+            
+            context_args = {
+                "user_agent": self.ua.random, # Changed UserAgent().random to self.ua.random
+                "viewport": {"width": 1280, "height": 720},
+                "locale": "en-US"
+            }
+            if self.session_file and os.path.exists(self.session_file):
+                context_args['storage_state'] = self.session_file
+                logger.info(f"Loaded session from {self.session_file}")
+
+            context = await browser.new_context(**context_args) # Removed **browser_args as it's already in launch
+            
+            # Anti-detect scripts
+            await context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
             
             queue = asyncio.Queue()
-            await queue.put((self.base_url, 0))
+            queue.put_nowait((self.start_url, 0)) # Changed await queue.put to queue.put_nowait and self.base_url to self.start_url
             
-            semaphore = asyncio.Semaphore(self.concurrency)
+            semaphore = asyncio.Semaphore(self.concurrency) # Moved semaphore initialization here
             
             # Start workers
             workers = [asyncio.create_task(self.worker(queue, context, semaphore)) 

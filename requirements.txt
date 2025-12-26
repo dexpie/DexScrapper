@@ -16,3 +16,4 @@ fastapi
 uvicorn
 pandas
 openai
+duckduckgo-search
