@@ -1,2 +1,3 @@
-title,link
-Example Domain,https://iana.org/domains/example
+url,title,links_count
+https://example.com,Example Domain,1
+https://iana.org/domains/example,Example Domains,4

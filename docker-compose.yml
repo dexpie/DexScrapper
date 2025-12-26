@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: dexscrapper
+    volumes:
+      - ./output:/app/output
+      - ./scraped_data.db:/app/scraped_data.db
+    ports:
+      - "8501:8501"
+    restart: unless-stopped

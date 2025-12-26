@@ -2,3 +2,9 @@ requests
 beautifulsoup4
 pandas
 fake-useragent
+aiohttp
+tenacity
+playwright
+sqlalchemy
+streamlit
+openpyxl
