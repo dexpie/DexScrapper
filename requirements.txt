@@ -11,3 +11,8 @@ openpyxl
 playwright-stealth
 aiofiles
 markdownify
+apscheduler
+fastapi
+uvicorn
+pandas
+openai
