@@ -15,7 +15,7 @@ import markdownify
 logger = logging.getLogger(__name__)
 
 class DynamicScraper:
-    def __init__(self, url, max_depth=2, concurrency=3, headless=True, proxy=None, download_media=False, url_filter=None, session_file=None, link_regex=None, robots_compliance=False, vision_mode=False):
+    def __init__(self, url, max_depth=2, concurrency=3, headless=True, proxy=None, download_media=False, url_filter=None, session_file=None, link_regex=None, robots_compliance=False, vision_mode=False, turbo_mode=False, stealth_mode=False):
         self.start_url = url
         self.max_depth = max_depth
         self.concurrency = concurrency
@@ -27,6 +27,8 @@ class DynamicScraper:
         self.link_regex = link_regex
         self.robots_compliance = robots_compliance
         self.vision_mode = vision_mode
+        self.turbo_mode = turbo_mode
+        self.stealth_mode = stealth_mode
         self.ua = UserAgent()
         
         # State

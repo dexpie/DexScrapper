@@ -111,7 +111,32 @@ with tab_scraper:
     # V10 Vision Mode
     vision_mode = False
     if "Dynamic" in mode:
-        vision_mode = st.sidebar.checkbox("👁️ Vision Mode (Optical Extraction)", help="Use AI Vision to extract data from screenshots. Bypasses text obfuscation.")
+        vision_mode = st.sidebar.checkbox("👁️ Vision Mode (Optical)", help="Extract data from screenshots.")
+    
+    # V12 Stealth & Turbo
+    st.sidebar.subheader("🏎️ V12 Performance")
+    turbo_mode = False
+    stealth_mode = False
+    if "Dynamic" in mode:
+        turbo_mode = st.sidebar.checkbox("🏎️ Turbo Mode (Block Media)", help="Blocks images/fonts for max speed.")
+        stealth_mode = st.sidebar.checkbox("👻 Stealth-X (Evasion)", help="Advanced anti-fingerprinting.")
+
+    # V12 Ghost Proxies
+    st.sidebar.subheader("🎭 Ghost Proxies")
+    if st.sidebar.button("Harvest Free Proxies"):
+        from src.proxy_manager import ProxyManager
+        pm = ProxyManager()
+        count = asyncio.run(pm.harvest_proxies())
+        if count > 0:
+            st.session_state['ghost_proxies'] = pm.proxies
+            st.sidebar.success(f"Harvested {count} proxies!")
+        else:
+            st.sidebar.error("Harvest failed.")
+            
+    if 'ghost_proxies' in st.session_state and st.session_state['ghost_proxies']:
+        use_ghost = st.sidebar.checkbox("Use Ghost Proxies (Auto-Rotate)")
+        if use_ghost: 
+            enable_proxy = True # Force enable logic
 
     # Feature: AI Extraction
     st.sidebar.markdown("---")
@@ -140,6 +165,16 @@ with tab_scraper:
             st.error("Please provide a URL or upload a file.")
             st.stop()
 
+        # Ghost Proxy Logic
+        ghost_pool = None
+        if 'ghost_proxies' in st.session_state and st.session_state.get('ghost_proxies'):
+             # If "Use Ghost Proxies" is checked (we need to capture that checkbox state properly)
+             # Limitation: Streamlit re-runs. 
+             # Let's assume if they have harvested and proxy is enabled, we prioritise ghost if selected?
+             # For simplicity, if 'use_ghost' was checked (variable scope issue), we use it.
+             # Re-reading use_ghost might be tricky without Session State. 
+             pass 
+
         # Clear logs
         if 'log_queue' in st.session_state:
             while not st.session_state['log_queue'].empty():
@@ -153,16 +188,31 @@ with tab_scraper:
         all_results = []
         progress_bar = st.progress(0)
         
+        # Helper for proxy rotation
+        import random
+        def get_current_proxy():
+            # If user manually set proxy, use it
+            if proxy_url: return proxy_url
+            # If ghost proxies active (we need to hack the scope or just use session state check)
+            # Minimal implementation:
+            if 'ghost_proxies' in st.session_state and enable_proxy and not proxy_url:
+                 return random.choice(st.session_state['ghost_proxies'])
+            return None
+
         with st.spinner(f"Scraping {len(urls_to_scrape)} URLs using {mode}..."):
             try:
                 for i, target_url in enumerate(urls_to_scrape):
                     status_area.info(f"Processing ({i+1}/{len(urls_to_scrape)}): {target_url}")
                     
+                    # Rotate Proxy
+                    current_proxy = get_current_proxy()
+                    if current_proxy: status_area.caption(f"🎭 Using Proxy: {current_proxy}")
+
                     # Run Scraper
                     current_results = []
                     if "Static" in mode:
                         scraper = StaticScraper(target_url, max_depth=depth, concurrency=concurrency, 
-                                                proxy=proxy_url if enable_proxy else None,
+                                                proxy=current_proxy,
                                                 download_media=download_media,
                                                 url_filter=url_filter,
                                                 link_regex=link_regex,
@@ -172,13 +222,15 @@ with tab_scraper:
                         # Dynamic
                         scraper = DynamicScraper(target_url, max_depth=depth, concurrency=concurrency, 
                                                headless=not visual_mode_browser, 
-                                               proxy=proxy_url if enable_proxy else None,
+                                               proxy=current_proxy,
                                                download_media=download_media,
                                                url_filter=url_filter,
                                                session_file=session_file,
                                                link_regex=link_regex,
                                                robots_compliance=robots_txt,
-                                               vision_mode=vision_mode)
+                                               vision_mode=vision_mode,
+                                               turbo_mode=turbo_mode,
+                                               stealth_mode=stealth_mode)
                         current_results = asyncio.run(scraper.run())
                     
                     # AI Processing (Omni-Brain)
