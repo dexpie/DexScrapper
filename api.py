@@ -114,6 +114,43 @@ async def get_job_results(job_id: str):
         
     return jobs[job_id]['results']
 
+# --- GEN-API ENDPOINT ---
+@app.get("/data")
+def get_scraped_data(
+    limit: int = 100, 
+    offset: int = 0, 
+    search: Optional[str] = None
+):
+    """
+    Gen-API: Serve scraped data dynamically.
+    """
+    try:
+        conn = DBManager("sqlite:///scraped_data.db").engine.connect()
+        query = "SELECT * FROM scraped_results"
+        params = {}
+        
+        if search:
+            query += " WHERE title LIKE :search OR content_snippet LIKE :search"
+            params['search'] = f"%{search}%"
+            
+        query += " LIMIT :limit OFFSET :offset"
+        params['limit'] = limit
+        params['offset'] = offset
+        
+        from sqlalchemy import text
+        result = conn.execute(text(query), params)
+        data = [dict(row._mapping) for row in result]
+        conn.close()
+        
+        return {
+            "count": len(data),
+            "limit": limit,
+            "offset": offset,
+            "data": data
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

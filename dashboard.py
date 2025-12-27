@@ -32,15 +32,39 @@ if 'log_queue' not in st.session_state:
     logging.getLogger().setLevel(logging.INFO)
 
 # Tabs
-tab_scraper, tab_explorer, tab_scheduler, tab_session, tab_cerebro, tab_oracle = st.tabs([
-    "🚀 Scraper Engine", "📊 Data Explorer", "👁️ The Watcher", "🔐 Session Manager", "🧠 Cerebro Agent", "🔮 The Oracle"
+tab_scraper, tab_explorer, tab_scheduler, tab_session, tab_cerebro, tab_oracle, tab_api = st.tabs([
+    "🚀 Scraper Engine", "📊 Data Explorer", "👁️ The Watcher", "🔐 Session Manager", "🧠 Cerebro Agent", "🔮 The Oracle", "🧞 Gen-API"
 ])
+
+# Global AI Settings (Side-wide or Sidebar?)
+st.sidebar.markdown("---")
+st.sidebar.subheader("🧠 Omni-Brain (AI Settings)")
+llm_provider = st.sidebar.selectbox("LLM Provider", ["OpenAI", "DeepSeek", "Ollama (Local)"])
+llm_base_url = None
+llm_model = "gpt-4o"
+llm_api_key = ""
+
+if llm_provider == "OpenAI":
+    llm_api_key = st.sidebar.text_input("OpenAI Key", type="password")
+    llm_model = st.sidebar.text_input("Model", "gpt-4o")
+elif llm_provider == "DeepSeek":
+    llm_api_key = st.sidebar.text_input("DeepSeek Key", type="password")
+    llm_base_url = st.sidebar.text_input("Base URL", "https://api.deepseek.com")
+    llm_model = st.sidebar.text_input("Model", "deepseek-chat")
+elif llm_provider == "Ollama (Local)":
+    llm_base_url = st.sidebar.text_input("Base URL", "http://localhost:11434/v1")
+    llm_model = st.sidebar.text_input("Model", "llama3")
+    llm_api_key = "ollama" # Dummy
 
 # --- TAB 1: SCRAPER ENGINE ---
 with tab_scraper:
     # Sidebar - Configuration
     st.sidebar.header("🔧 Configuration")
-
+    
+    # ... (Keep existing inputs) ...
+    # Instead of re-writing everything, I'll inject the new options.
+    # Note: Streamlit execution flow is top-down. We need to be careful with layout.
+    
     # Input Method
     input_method = st.sidebar.radio("Input Method", ["Single URL", "Batch File (.txt)"])
     urls_to_scrape = []
@@ -83,16 +107,21 @@ with tab_scraper:
         robots_txt = st.checkbox("👮 Respect robots.txt")
         link_regex = st.text_input("🔗 Follow Links Regex", help="Only follow links matching this pattern (e.g. '/product/')")
         st.caption("ℹ️ Tip: Input a `sitemap.xml` URL above to crawl it entirely.")
+    
+    # V10 Vision Mode
+    vision_mode = False
+    if "Dynamic" in mode:
+        vision_mode = st.sidebar.checkbox("👁️ Vision Mode (Optical Extraction)", help="Use AI Vision to extract data from screenshots. Bypasses text obfuscation.")
 
     # Feature: AI Extraction
     st.sidebar.markdown("---")
     st.sidebar.subheader("🧠 AI Extraction")
     enable_ai = st.sidebar.checkbox("Enable AI Parsing")
-    openai_key = ""
     ai_prompt = ""
     if enable_ai:
-        openai_key = st.sidebar.text_input("OpenAI API Key", type="password")
         ai_prompt = st.sidebar.text_area("Extraction Instruction", "Extract product name and price as JSON.")
+        if not llm_api_key:
+            st.sidebar.warning("⚠️ Please configure 'Omni-Brain' settings above.")
 
     # V3 Features: Media & Filter
     st.sidebar.markdown("---")
@@ -101,9 +130,9 @@ with tab_scraper:
     url_filter = st.sidebar.text_input("🔍 URL Key Filter", help="Only scrape URLs containing this keyword")
 
     # Visual Mode (Dynamic Only)
-    visual_mode = False
+    visual_mode_browser = False
     if "Dynamic" in mode:
-        visual_mode = st.sidebar.checkbox("📺 Show Browser (Visual Mode)", value=False, help="Watch the scraper in action!")
+        visual_mode_browser = st.sidebar.checkbox("📺 Show Browser (Visual Mode)", value=False, help="Watch the scraper in action!")
 
     # Action
     if st.button("🚀 Start Scraping", key="start_scraping"):
@@ -142,25 +171,42 @@ with tab_scraper:
                     else:
                         # Dynamic
                         scraper = DynamicScraper(target_url, max_depth=depth, concurrency=concurrency, 
-                                               headless=not visual_mode, 
+                                               headless=not visual_mode_browser, 
                                                proxy=proxy_url if enable_proxy else None,
                                                download_media=download_media,
                                                url_filter=url_filter,
                                                session_file=session_file,
                                                link_regex=link_regex,
-                                               robots_compliance=robots_txt)
+                                               robots_compliance=robots_txt,
+                                               vision_mode=vision_mode)
                         current_results = asyncio.run(scraper.run())
                     
-                    # AI Processing
-                    if enable_ai and openai_key and current_results:
-                        status_area.info(f"🧠 AI Analyzing {len(current_results)} pages...")
+                    # AI Processing (Omni-Brain)
+                    if enable_ai and llm_api_key and current_results:
+                        status_area.info(f"🧠 Omni-Brain ({llm_provider}) Analyzing {len(current_results)} pages...")
                         for res in current_results:
-                            if res.get('markdown_file') and os.path.exists(res['markdown_file']):
+                            # Determine content source: Screenshot (Vision) or Text
+                            content_to_parse = ""
+                            image_b64 = None
+                            
+                            if vision_mode and res.get('screenshot'):
+                                image_b64 = res.get('screenshot')
+                                status_area.info(f"👁️ Vision Analyzing: {res['url']}")
+                            elif res.get('markdown_file') and os.path.exists(res['markdown_file']):
                                 with open(res['markdown_file'], 'r', encoding='utf-8') as f:
-                                    content = f.read()
-                                ai_data = parse_with_ai(content, ai_prompt, openai_key)
-                                res['ai_data'] = ai_data
-                                status_area.info(f"AI Parsed: {res['title']}")
+                                    content_to_parse = f.read()
+
+                            # Call Omni-Brain
+                            ai_data = parse_with_ai(
+                                content=content_to_parse, 
+                                prompt=ai_prompt, 
+                                api_key=llm_api_key, 
+                                model=llm_model, 
+                                base_url=llm_base_url,
+                                image_base64=image_b64
+                            )
+                            res['ai_data'] = ai_data
+                            status_area.info(f"✅ AI Parsed: {res.get('title', 'Unknown')}")
 
                     if current_results:
                         all_results.extend(current_results)
