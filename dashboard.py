@@ -87,6 +87,12 @@ with tab_scraper:
     if enable_proxy:
         proxy_url = st.sidebar.text_input("Proxy URL", "http://user:pass@host:port")
 
+    # V8 Advanced Crawl
+    with st.sidebar.expander("🕸️ Advanced Spider Options"):
+        robots_txt = st.checkbox("👮 Respect robots.txt")
+        link_regex = st.text_input("🔗 Follow Links Regex", help="Only follow links matching this pattern (e.g. '/product/')")
+        st.caption("ℹ️ Tip: Input a `sitemap.xml` URL above to crawl it entirely.")
+
     # Feature: AI Extraction
     st.sidebar.markdown("---")
     st.sidebar.subheader("🧠 AI Extraction")
@@ -138,7 +144,9 @@ with tab_scraper:
                         scraper = StaticScraper(target_url, max_depth=depth, concurrency=concurrency, 
                                                 proxy=proxy_url if enable_proxy else None,
                                                 download_media=download_media,
-                                                url_filter=url_filter)
+                                                url_filter=url_filter,
+                                                link_regex=link_regex,
+                                                robots_compliance=robots_txt)
                         current_results = asyncio.run(scraper.run())
                     else:
                         # Dynamic
@@ -147,7 +155,9 @@ with tab_scraper:
                                                proxy=proxy_url if enable_proxy else None,
                                                download_media=download_media,
                                                url_filter=url_filter,
-                                               session_file=session_file) # Pass session
+                                               session_file=session_file,
+                                               link_regex=link_regex,
+                                               robots_compliance=robots_txt)
                         current_results = asyncio.run(scraper.run())
                     
                     # AI Processing

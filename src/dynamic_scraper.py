@@ -1,17 +1,21 @@
 from playwright.async_api import async_playwright
 import asyncio
+import re
+import json
 import logging
+import os
 from fake_useragent import UserAgent
 from urllib.parse import urlparse, urljoin
 import aiohttp
 from src.media_utils import download_file
 from src.utils import save_to_markdown
+from src.crawler_utils import parse_sitemap, check_robots_txt
 import markdownify
 
 logger = logging.getLogger(__name__)
 
 class DynamicScraper:
-    def __init__(self, url, max_depth=2, concurrency=3, headless=True, proxy=None, download_media=False, url_filter=None, session_file=None):
+    def __init__(self, url, max_depth=2, concurrency=3, headless=True, proxy=None, download_media=False, url_filter=None, session_file=None, link_regex=None, robots_compliance=False):
         self.start_url = url
         self.max_depth = max_depth
         self.concurrency = concurrency
@@ -20,6 +24,8 @@ class DynamicScraper:
         self.download_media = download_media
         self.url_filter = url_filter
         self.session_file = session_file
+        self.link_regex = link_regex
+        self.robots_compliance = robots_compliance
         self.ua = UserAgent()
         
         # State
@@ -27,9 +33,58 @@ class DynamicScraper:
         self.results = []
         self.semaphore = asyncio.Semaphore(concurrency)
         self.domain = urlparse(url).netloc
+        
+        # Load state if exists
+        self.state_file = f"crawl_state_{self.domain.replace(':', '_')}.json"
+        self.load_state()
+
+    def save_state(self):
+        try:
+            with open(self.state_file, 'w') as f:
+                json.dump(list(self.visited), f)
+        except: pass
+
+    def load_state(self):
+        if os.path.exists(self.state_file):
+            try:
+                with open(self.state_file, 'r') as f:
+                    self.visited = set(json.load(f))
+                logger.info(f"🔄 Resumed crawl. {len(self.visited)} pages already visited.")
+            except: pass
+        
+        # Load state if exists
+        self.state_file = f"crawl_state_{self.domain.replace(':', '_')}.json"
+        self.load_state()
+
+    def save_state(self):
+        """Saves visited URLs to a file for resuming."""
+        try:
+            with open(self.state_file, 'w') as f:
+                json.dump(list(self.visited), f)
+        except Exception as e:
+            logger.error(f"Failed to save state: {e}")
+
+    def load_state(self):
+        """Loads visited URLs from file."""
+        if os.path.exists(self.state_file):
+            try:
+                with open(self.state_file, 'r') as f:
+                    self.visited = set(json.load(f))
+                logger.info(f"🔄 Resumed crawl. {len(self.visited)} pages already visited.")
+            except: pass
 
     def is_same_domain(self, url):
         return urlparse(url).netloc == self.domain
+
+    def is_allowed_by_regex(self, url):
+        if not self.link_regex:
+            return True
+        return re.search(self.link_regex, url) is not None
+
+    def is_allowed_by_regex(self, url):
+        if not self.link_regex:
+            return True
+        return re.search(self.link_regex, url) is not None
 
     async def scrape_page(self, context, url):
         page = await context.new_page()
@@ -86,6 +141,8 @@ class DynamicScraper:
             
             # Filter links to same domain
             valid_links = [l for l in links if self.is_same_domain(l)]
+            if self.link_regex:
+                valid_links = [l for l in valid_links if self.is_allowed_by_regex(l)]
             
             # Apply URL Filter for next steps? No, filters are usually for *what to scrape*, not just links.
             # But here we filter links to queue.
@@ -117,6 +174,13 @@ class DynamicScraper:
             if url in self.visited:
                 queue.task_done()
                 continue
+            
+            # Robots check
+            if self.robots_compliance:
+                if not check_robots_txt(url, self.ua.random):
+                    logger.warning(f"🚫 Skipped (Robots.txt): {url}")
+                    queue.task_done()
+                    continue
 
             # Filtering Check
             if self.url_filter and self.url_filter not in url.lower():
@@ -128,6 +192,7 @@ class DynamicScraper:
                      continue
             
             self.visited.add(url)
+            self.save_state()
             
             async with semaphore:
                 data = await self.scrape_page(context, url)
@@ -174,9 +239,19 @@ class DynamicScraper:
             await context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
             
             queue = asyncio.Queue()
-            queue.put_nowait((self.start_url, 0)) # Changed await queue.put to queue.put_nowait and self.base_url to self.start_url
             
-            semaphore = asyncio.Semaphore(self.concurrency) # Moved semaphore initialization here
+            # Check if input is a sitemap
+            if self.start_url.endswith('.xml'):
+                logger.info("🗺️ Detected Sitemap input. loading URLs...")
+                sitemap_urls = parse_sitemap(self.start_url)
+                for u in sitemap_urls:
+                    if u not in self.visited:
+                        queue.put_nowait((u, 0))
+            else:
+                if self.start_url not in self.visited:
+                    queue.put_nowait((self.start_url, 0))
+            
+            semaphore = asyncio.Semaphore(self.concurrency)
             
             # Start workers
             workers = [asyncio.create_task(self.worker(queue, context, semaphore)) 

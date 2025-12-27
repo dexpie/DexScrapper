@@ -17,3 +17,5 @@ uvicorn
 pandas
 openai
 duckduckgo-search
+ultimate-sitemap-parser
+robotexclusionrulesparser

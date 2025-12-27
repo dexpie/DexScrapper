@@ -8,21 +8,48 @@ from urllib.parse import urlparse, urljoin
 from .media_utils import download_file
 from .utils import save_to_markdown
 import markdownify
+import re
+import os
+import json
+from src.crawler_utils import parse_sitemap, check_robots_txt
 
 logger = logging.getLogger(__name__)
 
 class StaticScraper:
-    def __init__(self, base_url, max_depth=1, concurrency=5, proxy=None, download_media=False, url_filter=None):
+    def __init__(self, base_url, max_depth=1, concurrency=5, proxy=None, download_media=False, url_filter=None, link_regex=None, robots_compliance=False):
         self.base_url = base_url
         self.max_depth = max_depth
         self.concurrency = concurrency
         self.proxy = proxy
         self.download_media = download_media
         self.url_filter = url_filter.lower() if url_filter else None
+        self.link_regex = link_regex
+        self.robots_compliance = robots_compliance
         self.visited = set()
         self.ua = UserAgent()
         self.results = []
         self.domain = urlparse(base_url).netloc
+        
+        # State
+        self.state_file = f"crawl_state_{self.domain.replace(':', '_')}.json"
+        self.load_state()
+
+    def save_state(self):
+        try:
+            with open(self.state_file, 'w') as f:
+                json.dump(list(self.visited), f)
+        except: pass
+
+    def load_state(self):
+        if os.path.exists(self.state_file):
+            try:
+                with open(self.state_file, 'r') as f:
+                    self.visited = set(json.load(f))
+            except: pass
+
+    def is_allowed_by_regex(self, url):
+        if not self.link_regex: return True
+        return re.search(self.link_regex, url) is not None
 
     def get_headers(self):
         return {
@@ -59,6 +86,8 @@ class StaticScraper:
         for a in soup.find_all('a', href=True):
             href = a.get('href')
             if href.startswith('http'):
+                if self.link_regex and not self.is_allowed_by_regex(href):
+                    continue
                 links.add(href)
             # Add more sophisticated collection if needed
 
@@ -139,5 +168,14 @@ class StaticScraper:
     async def run(self):
         logger.info(f"Starting Static Crawl for {self.base_url} (Depth: {self.max_depth})")
         async with aiohttp.ClientSession() as session:
-            await self.crawl(self.base_url, 0, session)
+            # Sitemap check
+            if self.base_url.endswith('.xml'):
+                urls = parse_sitemap(self.base_url)
+                tasks = []
+                for u in urls:
+                    if u not in self.visited:
+                        tasks.append(self.crawl(u, 0, session))
+                if tasks: await asyncio.gather(*tasks)
+            else:
+                await self.crawl(self.base_url, 0, session)
         return self.results
