@@ -8,7 +8,7 @@ class ScrapedData(Base):
     __tablename__ = 'scraped_data'
 
     id = Column(Integer, primary_key=True)
-    url = Column(String, unique=True, nullable=False)
+    url = Column(String, nullable=False)
     title = Column(String)
     content_snippet = Column(Text) # Snippet of text or metadata
     created_at = Column(DateTime(timezone=True), server_default=func.now())

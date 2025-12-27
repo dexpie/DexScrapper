@@ -48,12 +48,27 @@ def run_job(job_config):
                     content_snippet=item.get('content_snippet')
                 )
             
+            
             logger.info(f"✅ Job Complete. Scraped {len(results)} pages.")
             
-            # Send Notification
-            if webhook:
-                msg = f"**DexScrapper Alert** 🕷️\nJob Complete: {url}\nPages Scraped: {len(results)}\nMode: {mode}"
-                send_discord_webhook(webhook, msg)
+            # --- V14: SMART WATCHER (Diff Check) ---
+            from src.cronos import Cronos
+            cronos = Cronos()
+            
+            # Check for changes in the first result (primary target)
+            if results:
+                target_result = results[0]
+                is_diff, ratio, details = cronos.check_for_changes(target_result['url'], target_result.get('content_snippet', ''))
+                
+                if is_diff:
+                    msg = f"🔔 **Smart Alert**: Change Detected on {target_result['url']}\nDetails: {details}\nSimilarity: {ratio*100:.1f}%"
+                    logger.info(msg)
+                    
+                    if webhook:
+                        send_discord_webhook(webhook, msg)
+                else:
+                    logger.info(f"💤 No significant change on {target_result['url']}. Alert suppressed.")
+            
         else:
             logger.warning("Job finished but no data found.")
             
