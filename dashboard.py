@@ -1,11 +1,3 @@
-import sys
-import asyncio
-
-# Windows asyncio fix for Playwright/Subprocesses
-# MUST BE FIRST
-if sys.platform.startswith("win"):
-    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-
 import streamlit as st
 import asyncio
 import sys
@@ -21,6 +13,8 @@ from src.utils import save_to_csv, save_to_excel, save_to_json, ensure_dir
 from src.log_utils import QueueHandler
 from src.session_manager import create_session, get_available_sessions
 from src.cerebro import CerebroAgent
+from src.oracle import Oracle
+from src.cloud_utils import upload_to_sheets
 
 # Windows Asyncio Policy Fix
 if sys.platform == 'win32':
@@ -34,13 +28,12 @@ st.title("⚡ DexScrapper God Mode")
 if 'log_queue' not in st.session_state:
     st.session_state['log_queue'] = queue.Queue()
     q_handler = QueueHandler(st.session_state['log_queue'])
-    # Add handler to scrapers loggers
     logging.getLogger().addHandler(q_handler)
     logging.getLogger().setLevel(logging.INFO)
 
 # Tabs
-tab_scraper, tab_explorer, tab_scheduler, tab_session, tab_cerebro = st.tabs([
-    "🚀 Scraper Engine", "📊 Data Explorer", "👁️ The Watcher", "🔐 Session Manager", "🧠 Cerebro Agent"
+tab_scraper, tab_explorer, tab_scheduler, tab_session, tab_cerebro, tab_oracle = st.tabs([
+    "🚀 Scraper Engine", "📊 Data Explorer", "👁️ The Watcher", "🔐 Session Manager", "🧠 Cerebro Agent", "🔮 The Oracle"
 ])
 
 # --- TAB 1: SCRAPER ENGINE ---
@@ -48,8 +41,6 @@ with tab_scraper:
     # Sidebar - Configuration
     st.sidebar.header("🔧 Configuration")
 
-    # Tool Mode (Manual Scraper is default here)
-    
     # Input Method
     input_method = st.sidebar.radio("Input Method", ["Single URL", "Batch File (.txt)"])
     urls_to_scrape = []
@@ -197,19 +188,15 @@ with tab_scraper:
                     
                     st.session_state['results'] = all_results
 
-                    # Export Section (moved here to be part of scraper tab results)
+                    # Export Section
                     st.subheader("💾 Export Data")
                     col1, col2, col3 = st.columns(3)
-                    
                     ensure_dir('output')
-                    
-                    # Generate files for download
                     csv_file = 'output/dashboard_export.csv'
                     save_to_csv(all_results, csv_file)
                     with open(csv_file, 'rb') as f:
                         col1.download_button("Download CSV", f, file_name="scraped_data.csv", mime="text/csv")
                     
-                    # Excel requires openpyxl
                     xlsx_file = 'output/dashboard_export.xlsx'
                     try:
                         save_to_excel(all_results, xlsx_file)
@@ -241,6 +228,36 @@ with tab_scraper:
 with tab_explorer:
     st.header("📊 Data Explorer")
     db_path = "sqlite:///scraped_data.db"
+    
+    # Cloud Uplink
+    with st.expander("☁️ Cloud Uplink (Google Sheets)"):
+        st.info("Upload your entire database to a Google Sheet.")
+        col_g1, col_g2 = st.columns(2)
+        gs_creds = col_g1.file_uploader("Service Account JSON", type=['json'], help="Upload your Google Cloud Credentials JSON")
+        sheet_name = col_g1.text_input("Target Sheet Name", "DexScrapper Data")
+        email_share = col_g1.text_input("Share with Email", "user@example.com")
+        
+        if col_g1.button("🚀 Sync to Cloud"):
+            if not gs_creds:
+                 st.error("Please upload JSON credentials.")
+            elif not os.path.exists("scraped_data.db"):
+                 st.error("No database found.")
+            else:
+                 try:
+                     # Save temp json
+                     with open("temp_creds.json", "wb") as f:
+                         f.write(gs_creds.getvalue())
+                     
+                     conn = "sqlite:///scraped_data.db"
+                     df = pd.read_sql("SELECT * FROM scraped_results", conn)
+                     
+                     with st.spinner("Uploading to Google Sheets..."):
+                         link = upload_to_sheets(df, sheet_name, "temp_creds.json", email_share)
+                     
+                     st.success(f"✅ Upload Success! [Open Sheet]({link})")
+                 except Exception as e:
+                     st.error(f"Upload failed: {e}")
+
     if os.path.exists("scraped_data.db"):
         conn = "sqlite:///scraped_data.db"
         try:
@@ -249,20 +266,14 @@ with tab_explorer:
             
             col1, col2 = st.columns(2)
             with col1:
-                st.download_button(
-                    "📥 Download CSV",
-                    df.to_csv(index=False).encode('utf-8'),
-                    "scraped_data.csv",
-                    "text/csv"
-                )
+                st.download_button("📥 Download CSV", df.to_csv(index=False).encode('utf-8'), "scraped_data.csv", "text/csv")
             with col2:
                 if st.button("🗑️ Delete All Data"):
-                    # Quick hack to clear DB
                     from sqlalchemy import create_engine, text
                     engine = create_engine(conn)
                     with engine.connect() as con:
-                        con.execute(text("DELETE FROM scraped_results"))
-                        con.commit()
+                         con.execute(text("DELETE FROM scraped_results"))
+                         con.commit()
                     st.success("Database cleared!")
                     st.rerun()
         except Exception as e:
@@ -290,20 +301,16 @@ with tab_scheduler:
                 "webhook": sch_webhook,
                 "active": True
             }
-            
             jobs = []
             if os.path.exists("scheduled_jobs.json"):
                 with open("scheduled_jobs.json", 'r') as f:
-                    try:
-                        jobs = json.load(f)
+                    try: jobs = json.load(f)
                     except: pass
-            
             jobs.append(new_job)
             with open("scheduled_jobs.json", 'w') as f:
                 json.dump(jobs, f, indent=4)
             st.success("Job added to schedule!")
             
-    # Show active jobs
     if os.path.exists("scheduled_jobs.json"):
         st.subheader("📅 Active Schedules")
         import json
@@ -360,58 +367,28 @@ with tab_cerebro:
             status_container.success("Research Complete!")
             st.markdown(report)
 
-# Display Results
-if 'results' in st.session_state and st.session_state['results']:
-    data = st.session_state['results']
-    df = pd.DataFrame(data)
+# --- TAB 6: THE ORACLE ---
+with tab_oracle:
+    st.header("🔮 The Oracle - Chat with Data")
+    st.info("Your data analyst. Ask questions about the content you've scraped.")
     
-    # Clean up for display
-    # Check if links exists to avoid key error if empty result structure
-    if 'links' in df.columns:
-        display_df = df.copy()
-        display_df['links_count'] = display_df['links'].apply(lambda x: len(x) if isinstance(x, list) else 0)
-        display_df = display_df.drop(columns=['links'])
+    oracle_key = st.text_input("OpenAI API Key (For Oracle)", type="password")
+    
+    if os.path.exists("scraped_data.db"):
+        conn = "sqlite:///scraped_data.db"
+        df = pd.read_sql("SELECT * FROM scraped_results", conn)
+        st.write(f"Loaded {len(df)} records from database.")
+        
+        user_query = st.text_input("Ask something about your data:", "What is the sentiment of the scraped content?")
+        
+        if st.button("🔮 Ask Oracle"):
+            if not oracle_key:
+                st.error("API Key required.")
+            else:
+                with st.spinner("Gazing into the orb..."):
+                    oracle = Oracle(df, oracle_key)
+                    answer = oracle.ask(user_query)
+                st.success("The Oracle Speaks:")
+                st.markdown(answer)
     else:
-        display_df = df
-
-    st.subheader("📊 Scraped Data")
-    st.dataframe(display_df, use_container_width=True)
-
-    # Export Section
-    st.subheader("💾 Export Data")
-    col1, col2, col3 = st.columns(3)
-    
-    ensure_dir('output')
-    
-    # Generate files for download
-    csv_file = 'output/dashboard_export.csv'
-    save_to_csv(data, csv_file)
-    with open(csv_file, 'rb') as f:
-        col1.download_button("Download CSV", f, file_name="scraped_data.csv", mime="text/csv")
-    
-    # Excel requires openpyxl
-    xlsx_file = 'output/dashboard_export.xlsx'
-    try:
-        save_to_excel(data, xlsx_file)
-        with open(xlsx_file, 'rb') as f:
-            col2.download_button("Download Excel", f, file_name="scraped_data.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    except Exception as e:
-        col2.error("Excel export failed")
-
-    json_file = 'output/dashboard_export.json'
-    save_to_json(data, json_file)
-    with open(json_file, 'rb') as f:
-        col3.download_button("Download JSON", f, file_name="scraped_data.json", mime="application/json")
-
-# Database Viewer
-st.markdown("---")
-st.subheader("🗄️ Database Viewer (History)")
-if st.checkbox("Show Database History"):
-    try:
-        db_path = "sqlite:///scraped_data.db"
-        conn = DBManager(db_path).engine.connect()
-        history_df = pd.read_sql("SELECT * FROM scraped_data ORDER BY created_at DESC LIMIT 50", conn)
-        st.dataframe(history_df)
-        conn.close()
-    except Exception as e:
-        st.warning("No database found or empty.")
+        st.warning("No data found. Please run a scrape first.")

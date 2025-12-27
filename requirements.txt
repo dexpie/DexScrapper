@@ -19,3 +19,5 @@ openai
 duckduckgo-search
 ultimate-sitemap-parser
 robotexclusionrulesparser
+gspread
+oauth2client

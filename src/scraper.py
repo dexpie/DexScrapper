@@ -170,6 +170,7 @@ class StaticScraper:
         async with aiohttp.ClientSession() as session:
             # Sitemap check
             if self.base_url.endswith('.xml'):
+                logger.info("🗺️ Detected Sitemap input.")
                 urls = parse_sitemap(self.base_url)
                 tasks = []
                 for u in urls:
