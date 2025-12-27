@@ -32,8 +32,8 @@ if 'log_queue' not in st.session_state:
     logging.getLogger().setLevel(logging.INFO)
 
 # Tabs
-tab_scraper, tab_explorer, tab_scheduler, tab_session, tab_cerebro, tab_oracle, tab_api, tab_genesis, tab_alchemy, tab_timemachine, tab_nexus, tab_hive = st.tabs([
-    "🚀 Scraper Engine", "📊 Data Explorer", "👁️ The Watcher", "🔐 Session Manager", "🧠 Cerebro Agent", "🔮 The Oracle", "🧞 Gen-API", "🧬 Genesis", "⚗️ Alchemy", "⏳ Time Machine", "🔗 Nexus", "🐝 Hive Mind"
+tab_scraper, tab_explorer, tab_scheduler, tab_session, tab_cerebro, tab_oracle, tab_api, tab_genesis, tab_alchemy, tab_timemachine, tab_nexus, tab_hive, tab_overlord = st.tabs([
+    "🚀 Scraper Engine", "📊 Data Explorer", "👁️ The Watcher", "🔐 Session Manager", "🧠 Cerebro Agent", "🔮 The Oracle", "🧞 Gen-API", "🧬 Genesis", "⚗️ Alchemy", "⏳ Time Machine", "🔗 Nexus", "🐝 Hive Mind", "👑 War Room"
 ])
 
 # Global AI Settings (Side-wide or Sidebar?)
